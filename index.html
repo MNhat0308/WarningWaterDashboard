@@ -157,15 +157,15 @@
             <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
           </button>
           <button data-layer="risk" onclick="App.switchLayer('risk')" class="layer-btn flex flex-col items-center justify-center gap-1 p-1 text-xs font-semibold rounded-md text-center hover:bg-slate-100 text-slate-600 w-20 h-20">
-            <img src="https://raw.githubusercontent.com/lqtue/RiverTracking/refs/heads/main/Flood.png" alt="Lũ quét icon" class="w-10 h-10 rounded">
+            <img src="icons/Flood.png" alt="Lũ quét icon" class="w-10 h-10 rounded">
             <span class="text-[10px] leading-tight">Lũ quét, Sạt lở</span>
           </button>
           <button data-layer="river_lake" onclick="App.switchLayer('river_lake')" class="layer-btn flex flex-col items-center gap-1 p-1 text-xs font-semibold rounded-md text-center hover:bg-slate-100 text-slate-600">
-            <img src="https://raw.githubusercontent.com/lqtue/RiverTracking/refs/heads/main/Lake.png" alt="Sông & Hồ icon" class="w-10 h-10 rounded">
+            <img src="icons/Lake.png" alt="Sông & Hồ icon" class="w-10 h-10 rounded">
             <span class="text-[10px] leading-tight">Sông & Hồ</span>
           </button>
           <button data-layer="all" onclick="App.switchLayer('all')" class="layer-btn active flex flex-col items-center gap-1 p-1 text-xs font-semibold rounded-md text-center hover:bg-slate-100 text-slate-600">
-            <img src="https://raw.githubusercontent.com/lqtue/RiverTracking/refs/heads/main/All.png" alt="Tất cả icon" class="w-10 h-10 rounded">
+            <img src="icons/All.png" alt="Tất cả icon" class="w-10 h-10 rounded">
             <span class="text-[10px] leading-tight">Tất cả</span>
           </button>
         </div>
@@ -245,11 +245,11 @@
    */
   const CONFIG = {
     URLS: {
-      RIVER_GEO: 'river.json',
-      BOUNDARY: 'ProvincialBoundary.json',
-      DATA_CSV: 'https://raw.githubusercontent.com/lqtue/RiverTrackingAutomate/main/data/water_data_full_combined.csv',
-      LANDSLIDE_CSV: 'https://raw.githubusercontent.com/lqtue/RiverTrackingAutomate/main/data/landslide.csv',
-      WARD_BOUNDARY: 'WardBoundary.geojson'
+      RIVER_GEO: 'geo/river.json',
+      BOUNDARY: 'geo/ProvincialBoundary.json',
+      DATA_CSV: 'data/water_data_full_combined.csv',
+      LANDSLIDE_CSV: 'data/landslide.csv',
+      WARD_BOUNDARY: 'geo/WardBoundary.geojson'
     },
     COLORS: ['#3b82f6', '#22c55e', '#f97316', '#a855f7', '#ec4899', '#0ea5e9', '#f59e0b', '#10b981'],
     LIMITS: { LAKES: 50, RIVERS: 50 }, // FIX: Increased limit so you see more stations
