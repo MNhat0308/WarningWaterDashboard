@@ -2,7 +2,7 @@ name: Water Data Export
 
 on:
   schedule:
-    - cron: "0 * * * *"   # chạy mỗi giờ, phút 00 UTC
+    - cron: "7 * * * *"   # chạy mỗi giờ, phút 00 UTC
   workflow_dispatch:       # cho phép chạy tay
 
 # 👇 Thêm đoạn này
