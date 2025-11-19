@@ -21,6 +21,30 @@
   gtag('config', 'G-JGB5XHREV0');
 </script>
 
+<script>
+  // DOMAIN CHECK LOGIC ADDED HERE
+  function checkDomain() {
+    var checked = true;
+    try {
+      var ref = document.referrer || null;
+      if (ref != null || ref != "") {
+        var a = document.createElement('a');
+        a.href = ref;
+        if (a.host.indexOf('vnexpress.net') == -1) {
+          checked = false;
+        }
+      }
+    } catch (e) {
+      checked = true;
+    }
+    return checked;
+  }
+
+  if (!checkDomain()) {
+    window.location.href = 'https://vnexpress.net';
+  }
+</script>
+
   <style>
       body { font-family: 'Inter', sans-serif; }
       
@@ -75,9 +99,12 @@
           <path fill-rule="evenodd" d="M8 4a4 4 0 100 8 4 4 0 000-8zM2 8a6 6 0 1110.89 3.476l4.817 4.817a1 1 0 01-1.414 1.414l-4.816-4.816A6 6 0 012 8z" clip-rule="evenodd" />
         </svg>
       </div>
-      <input type="text" id="search-input" placeholder="Tìm vị trí hoặc tỉnh thành" 
+      <!-- UPDATED INPUT: changed placeholder and onkeyup event -->
+      <input type="text" id="search-input" placeholder="Tìm theo vị trí hoặc địa điểm" 
              class="w-full pl-10 pr-4 py-2 border rounded-full text-base lg:text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 transition"
-             onfocus="Search.showSuggestions()" onblur="setTimeout(Search.hideSuggestions, 200)" onkeyup="Search.filter()">
+             onfocus="Search.showSuggestions()" 
+             onblur="setTimeout(Search.hideSuggestions, 200)" 
+             onkeyup="Search.handleInput()">
       <div id="search-suggestions" class="absolute mt-1 w-full bg-white rounded-lg shadow-lg overflow-hidden hidden max-h-60 overflow-y-auto custom-scroll">
         <ul id="suggestions-list">
           </ul>
@@ -115,6 +142,7 @@
             <div class="pr-1">
               <div class="font-semibold mb-1">Tỷ lệ dung tích hồ chứa</div>
               <div class="flex flex-col gap-1 text-[11px]">
+                <div class="flex items-center gap-1.5"><svg width="12" height="12" viewBox="0 0 24 24" fill="#7e22ce" stroke="white" stroke-width="2"><path d="M12 2L2 22h20L12 2z"></path></svg> >105%</div>
                 <div class="flex items-center gap-1.5"><svg width="12" height="12" viewBox="0 0 24 24" fill="#ef4444" stroke="white" stroke-width="2"><path d="M12 2L2 22h20L12 2z"></path></svg> >100%</div>
                 <div class="flex items-center gap-1.5"><svg width="12" height="12" viewBox="0 0 24 24" fill="#f97316" stroke="white" stroke-width="2"><path d="M12 2L2 22h20L12 2z"></path></svg> ≥95%</div>
                 <div class="flex items-center gap-1.5"><svg width="12" height="12" viewBox="0 0 24 24" fill="#eab308" stroke="white" stroke-width="2"><path d="M12 2L2 22h20L12 2z"></path></svg> ≥90%</div>
@@ -124,6 +152,7 @@
             <div class="border-l pl-2 border-slate-200">
               <div class="font-semibold mb-1">Trạm mực nước sông</div>
               <div class="flex flex-col gap-1 text-[11px]">
+                <div class="flex items-center gap-1.5"><div class="w-2.5 h-2.5 rounded-full" style="background-color:#7e22ce;"></div> Trên lũ lịch sử</div>
                 <div class="flex items-center gap-1.5"><div class="w-2.5 h-2.5 rounded-full" style="background-color:#ef4444;"></div> Trên BĐ3</div>
                 <div class="flex items-center gap-1.5"><div class="w-2.5 h-2.5 rounded-full" style="background-color:#f97316;"></div> Trên BĐ2</div>
                 <div class="flex items-center gap-1.5"><div class="w-2.5 h-2.5 rounded-full" style="background-color:#eab308;"></div> Trên BĐ1</div>
@@ -235,27 +264,6 @@
   </div>
 
   <script>
-  // DOMAIN CHECK LOGIC ADDED HERE
-  function checkDomain(){
-        var checked = true;
-        try {
-            var ref = document.referrer || null;
-            if (ref != null || ref != "") {
-                var a = document.createElement('a');
-                a.href = ref;
-                if (a.host.indexOf('vnexpress.net') == -1) {
-                    checked = false;
-                }
-            }
-        } catch (e) {
-            checked = true;
-        }
-        return checked;
-    }
-
-  if (!checkDomain()){
-      window.location.href = 'https://vnexpress.net';
-  }
 
   /**
    * CONFIGURATION
@@ -307,9 +315,9 @@
         this.processCSV(csv);
         this.processLandslideCSV(landslideCsv);
         if (wardBoundary) MapManager.renderLandslideRisk(wardBoundary);
+        // FIX: Move basin switch to the end to ensure all data is loaded before rendering
         this.analyzeBasins();
         UI.initTabs();
-        // UI.updateStatus(); // This is now redundant
         UI.updateLiveTime();
         App.switchBasin('__ALL__');
       } catch (e) { console.error(e); }
@@ -439,8 +447,20 @@
         center: [14, 108.5], zoom: 6, preferCanvas: true, zoomControl: false, attributionControl: false
       });
       // Create custom panes to control layer order
+      // Basemap tiles use the default 'tilePane' (zIndex 200).
+      // Label overlay pane (above basemap, below all vector overlays)
+      this.instance.createPane('labelPane');
+      this.instance.getPane('labelPane').style.zIndex = 350;
+      // Regional geometry pane (province boundaries, etc.)
+      this.instance.createPane('boundaryPane');
+      this.instance.getPane('boundaryPane').style.zIndex = 410;
+      // Risk polygons (landslide, flood risk) below rivers, above region boundaries
       this.instance.createPane('riskPane');
-      this.instance.getPane('riskPane').style.zIndex = 420; // Above overlays (400), below markers (600)
+      this.instance.getPane('riskPane').style.zIndex = 415; // Above boundaries (410), below rivers (420) and markers (430)
+      // Rivers pane (river geometries)
+      this.instance.createPane('riverPane');
+      this.instance.getPane('riverPane').style.zIndex = 420;
+      // Stations & lakes pane (markers)
       this.instance.createPane('stationPane');
       this.instance.getPane('stationPane').style.zIndex = 430; // Above risk areas
 
@@ -461,13 +481,12 @@
       
       // Add an overlay for labels with 50% opacity
       L.tileLayer('https://vndms.dmptc.gov.vn/VNDark/{z}/{x}/{y}.png', {
-        zIndex: 2, // Higher zIndex to appear on top
         opacity: 0.5,
-        pane: 'shadowPane' // Use a different pane to ensure it's an overlay
+        pane: 'labelPane'
       }).addTo(this.instance);
 
-      this.layers.river = L.layerGroup();
-      this.layers.station = L.layerGroup();
+      this.layers.river = L.layerGroup().addTo(this.instance);
+      this.layers.station = L.layerGroup().addTo(this.instance);
     },
 
     renderLandslideRisk(wardBoundary) {
@@ -511,7 +530,8 @@
     addBoundary(data) {
       L.geoJSON(data, { 
         style: { color: '#ffffff', weight: 1, opacity: 0.6, fillOpacity: 0 }, 
-        interactive: false 
+        interactive: false,
+        pane: 'boundaryPane'
       }).addTo(this.instance);
     },
     
@@ -544,11 +564,10 @@
 
       if (State.geoJSON) {
         const features = State.geoJSON.features.filter(f => {
-          const b = f.properties.Basin || f.properties.basin;
-          return basinName === '__ALL__' ? activeBasins.has(b) : b === basinName;
+          return basinName === '__ALL__' || (f.properties.Basin || f.properties.basin) === basinName;
         });
         if (features.length) {
-          const riverLayer = L.geoJSON(features, { style: this.styleRiver });
+          const riverLayer = L.geoJSON(features, { style: this.styleRiver, pane: 'riverPane' });
           this.layers.river.addLayer(riverLayer);
 
           if (basinName === '__ALL__') {
@@ -568,8 +587,10 @@
     },
 
     styleRiver(feature) {
-      const props = feature.properties;
-      const level = props.Level || 0; // Default to level 0 if not specified
+      const props = feature.properties || {};
+      // Ensure Level is treated as a number even if it's stored as a string in GeoJSON
+      const rawLevel = props.Level ?? props.level ?? 0;
+      const level = Number.isNaN(parseInt(rawLevel, 10)) ? 0 : parseInt(rawLevel, 10); // Default to level 0 if not specified
 
       let weight;
       let opacity;
@@ -593,7 +614,7 @@
 
     createMarker(r) {
       const isLake = r.type === 'lake';
-      const color = isLake ? null : this.getAlertColor(r.alert);
+      const color = isLake ? null : this.getRiverColor(r);
       const lakeColor = isLake ? this.getLakeColor(r.percent) : null;
       const basinColor = this.getBasinColor(r.basin);
       let marker;
@@ -639,11 +660,24 @@
     },
 
     getAlertColor(val) {
-      if (val >= 3) return '#ef4444'; if (val >= 2) return '#f97316'; if (val >= 1) return '#eab308'; return '#0ea5e9';
+      if (val >= 3) return '#ef4444'; 
+      if (val >= 2) return '#f97316'; 
+      if (val >= 1) return '#eab308'; 
+      return '#0ea5e9';
+    },
+
+    // Color for river stations, with special purple for levels above historical flood
+    getRiverColor(record) {
+      if (record && record.historicalLevel != null && record.water != null && record.water > record.historicalLevel) {
+        return '#7e22ce'; // Purple for "Trên lũ lịch sử"
+      }
+      const alertVal = (record && record.alert) || 0;
+      return this.getAlertColor(alertVal);
     },
 
     getLakeColor(percent) {
       if (percent == null) return '#0ea5e9'; // Default blue
+      if (percent > 105) return '#7e22ce';  // Purple for >105%
       if (percent > 100) return '#ef4444';  // Red
       if (percent >= 95) return '#f97316';  // Orange
       if (percent >= 90) return '#eab308';  // Yellow
@@ -806,19 +840,22 @@
       records.forEach(r => {
         if (!basins[r.basin]) {
           basins[r.basin] = {
-            lakes: { red: 0, orange: 0, yellow: 0, blue: 0 },
-            rivers: { red: 0, orange: 0, yellow: 0, blue: 0 }
+            lakes: { purple: 0, red: 0, orange: 0, yellow: 0, blue: 0 },
+            rivers: { purple: 0, red: 0, orange: 0, yellow: 0, blue: 0 }
           };
         }
         if (r.type === 'lake') {
           const p = r.percent;
-          if (p > 100) basins[r.basin].lakes.red++;
-          else if (p >= 95) basins[r.basin].lakes.orange++;
-          else if (p >= 90) basins[r.basin].lakes.yellow++;
+          if (p != null && p > 105) basins[r.basin].lakes.purple++;
+          else if (p != null && p > 100) basins[r.basin].lakes.red++;
+          else if (p != null && p >= 95) basins[r.basin].lakes.orange++;
+          else if (p != null && p >= 90) basins[r.basin].lakes.yellow++;
           else basins[r.basin].lakes.blue++;
         } else {
           const a = r.alert;
-          if (a >= 3) basins[r.basin].rivers.red++;
+          const aboveHistorical = r.historicalLevel != null && r.water != null && r.water > r.historicalLevel;
+          if (aboveHistorical) basins[r.basin].rivers.purple++;
+          else if (a >= 3) basins[r.basin].rivers.red++;
           else if (a >= 2) basins[r.basin].rivers.orange++;
           else if (a >= 1) basins[r.basin].rivers.yellow++;
           else basins[r.basin].rivers.blue++;
@@ -847,11 +884,11 @@
             <div class="grid grid-cols-2 gap-2">
               <div>
                 <div class="font-semibold text-emerald-700 mb-1">Tỷ lệ dung tích hồ chứa</div>
-                ${summaryItem('lake', '#ef4444', '> 100%', data.lakes.red)} ${summaryItem('lake', '#f97316', '≥ 95%', data.lakes.orange)} ${summaryItem('lake', '#eab308', '≥ 90%', data.lakes.yellow)} ${summaryItem('lake', '#0ea5e9', '< 90%', data.lakes.blue)}
+                ${summaryItem('lake', '#7e22ce', '> 105%', data.lakes.purple)} ${summaryItem('lake', '#ef4444', '> 100%', data.lakes.red)} ${summaryItem('lake', '#f97316', '≥ 95%', data.lakes.orange)} ${summaryItem('lake', '#eab308', '≥ 90%', data.lakes.yellow)} ${summaryItem('lake', '#0ea5e9', '< 90%', data.lakes.blue)}
               </div>
               <div>
                 <div class="font-semibold text-blue-700 mb-1">Trạm sông</div>
-                ${summaryItem('river', '#ef4444', 'BĐ3+', data.rivers.red)} ${summaryItem('river', '#f97316', 'BĐ2', data.rivers.orange)} ${summaryItem('river', '#eab308', 'BĐ1', data.rivers.yellow)} ${summaryItem('river', '#0ea5e9', 'Dưới BĐ1', data.rivers.blue)}
+                ${summaryItem('river', '#7e22ce', 'Trên lũ lịch sử', data.rivers.purple)} ${summaryItem('river', '#ef4444', 'BĐ3+', data.rivers.red)} ${summaryItem('river', '#f97316', 'BĐ2', data.rivers.orange)} ${summaryItem('river', '#eab308', 'BĐ1', data.rivers.yellow)} ${summaryItem('river', '#0ea5e9', 'Dưới BĐ1', data.rivers.blue)}
               </div>
             </div>
           </div>`;
@@ -884,8 +921,21 @@
         const isLake = type === 'lake';
         const alertLvl = latest.alert || 0; 
         const percent = latest.percent || 0;
-        const color = isLake ? MapManager.getLakeColor(percent) : MapManager.getAlertColor(alertLvl);
-        const valueText = isLake ? `${formatDecimal(percent, 2)}%` : (latest.alertTrend || `Mức ${alertLvl}`);
+
+        let color, valueText;
+        if (isLake) {
+          color = MapManager.getLakeColor(percent);
+          valueText = `${formatDecimal(percent, 2)}%`;
+        } else {
+          const aboveHistorical = latest.historicalLevel != null && latest.water != null && latest.water > latest.historicalLevel;
+          if (aboveHistorical) {
+            color = '#7e22ce';
+            valueText = 'Trên lũ lịch sử';
+          } else {
+            color = MapManager.getAlertColor(alertLvl);
+            valueText = latest.alertTrend || `Mức ${alertLvl}`;
+          }
+        }
         const html = `
           <div class="border rounded bg-white p-2 shadow-sm" id="card-${code}">
             <div class="flex justify-between items-start mb-1"><div>
@@ -1119,80 +1169,137 @@
 
 
   /**
-   * MODULE: SEARCH
+   * MODULE: SEARCH (Nominatim Integration)
    */
   const Search = {
-    getSortedProvinces() {
-      const prioritized = [
-        'TP Huế',
-        'TP Đà Nẵng',
-        'tỉnh Quảng Ngãi', 
-        'tỉnh Gia Lai', 
-        'tỉnh Đắk Lắk',
-      ];
-      const allProvinces = [...new Set(State.provinces.map(f => f.properties['Tỉnh thành mới']))];
-      const remaining = allProvinces
-        .filter(p => !prioritized.includes(p))
-        .sort((a, b) => a.localeCompare(b, 'vi'));
-      return [...prioritized, ...remaining];
-    },
+    debounceTimer: null,
+    
+    // Hiển thị khung gợi ý
     showSuggestions() {
-      const suggestionsEl = document.getElementById('search-suggestions');
-      const listEl = document.getElementById('suggestions-list');
-      suggestionsEl.classList.remove('hidden');
-      this.filter(); // Just call filter to populate
+      const input = document.getElementById('search-input');
+      if(input.value.trim() !== "") {
+         document.getElementById('search-suggestions').classList.remove('hidden');
+      }
     },
+
+    // Ẩn khung gợi ý
     hideSuggestions() {
       document.getElementById('search-suggestions').classList.add('hidden');
     },
-    filter() {
+
+    // Xử lý khi người dùng gõ phím (Debounce 500ms)
+    handleInput() {
       const input = document.getElementById('search-input');
-      const filter = input.value.toUpperCase();
+      const query = input.value.trim();
+      
+      // Xóa timer cũ nếu người dùng vẫn đang gõ
+      if (this.debounceTimer) clearTimeout(this.debounceTimer);
+
       const listEl = document.getElementById('suggestions-list');
-      listEl.innerHTML = ''; // Clear current suggestions
-
-      const createSuggestionItem = (text, value, isProvince) => {
-        // Use innerHTML to allow for icons
-        const li = document.createElement('li');
-        li.className = 'suggestion-item px-4 py-2 hover:bg-blue-50 cursor-pointer text-sm';
-        li.innerHTML = text;
-        li.dataset.value = value;
-        li.onclick = () => isProvince ? this.selectProvince(value) : this.useMyLocation();
-        listEl.appendChild(li);
-      };
-
-      // Add "Your Location" with a locator icon
-      const myLocationHTML = `
-        <div class="flex items-center gap-2"><svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-blue-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" /><path stroke-linecap="round" stroke-linejoin="round" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" /></svg>Vị trí của bạn</div>
-      `;
-      createSuggestionItem(myLocationHTML, 'my-location', false);
-
-      const provinceNames = this.getSortedProvinces();
-      provinceNames.forEach(name => {
-        if (name.toUpperCase().indexOf(filter) > -1) {
-          createSuggestionItem(name.replace('tỉnh ', '').replace('thành phố ', ''), name, true);
-        }
-      });
-    },
-    useMyLocation() {
-      MapManager.instance.locate({setView: true, maxZoom: 10});
-    },
-    selectProvince(name) {
-      // Clear any existing highlight first for efficiency
-      MapManager.layers.highlight.clearLayers();
-
-      const province = State.provinces.find(f => f.properties['Tỉnh thành mới'] === name);
-      if (province) {
-        const highlightStyle = {
-          color: '#facc15', // yellow-400
-          weight: 3,
-          opacity: 1,
-          fillColor: 'transparent',
-          fillOpacity: 0
-        };
-        const layer = L.geoJSON(province, { style: highlightStyle }).addTo(MapManager.layers.highlight);
-        MapManager.instance.flyToBounds(layer.getBounds(), { padding: [50, 50], duration: 1 });
+      
+      // Nếu ô input trống, xóa danh sách và ẩn
+      if (!query) {
+        listEl.innerHTML = '';
+        this.addMyLocationOption(listEl); // Luôn hiển thị tùy chọn vị trí của tôi
+        this.showSuggestions();
+        return;
       }
+
+      // Đợi 500ms sau khi ngừng gõ mới gọi API
+      this.debounceTimer = setTimeout(() => {
+        this.fetchNominatim(query);
+      }, 500);
+    },
+
+    // Gọi API Nominatim
+    async fetchNominatim(query) {
+      try {
+        // countrycodes=vn: Giới hạn tìm kiếm trong Việt Nam
+        // addressdetails=1: Lấy chi tiết địa chỉ
+        // limit=5: Giới hạn 5 kết quả
+        const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}&format=json&countrycodes=vn&limit=5&addressdetails=1`;
+        
+        const response = await fetch(url, {
+            headers: {
+                'Accept-Language': 'vi' // Ưu tiên kết quả tiếng Việt
+            }
+        });
+        
+        if (!response.ok) throw new Error('Lỗi kết nối');
+        const results = await response.json();
+        this.renderSuggestions(results);
+      } catch (error) {
+        console.error("Lỗi tìm kiếm:", error);
+      }
+    },
+
+    // Hiển thị kết quả ra danh sách
+    renderSuggestions(results) {
+      const listEl = document.getElementById('suggestions-list');
+      listEl.innerHTML = '';
+
+      // 1. Luôn thêm tùy chọn "Vị trí của bạn" ở đầu
+      this.addMyLocationOption(listEl);
+
+      // 2. Thêm các kết quả từ API
+      results.forEach(item => {
+        const li = document.createElement('li');
+        li.className = 'suggestion-item px-4 py-2 hover:bg-blue-50 cursor-pointer text-sm border-t border-slate-100 truncate';
+        li.textContent = item.display_name; // Tên hiển thị đầy đủ từ Nominatim
+        li.onclick = () => this.selectLocation(item);
+        listEl.appendChild(li);
+      });
+
+      document.getElementById('search-suggestions').classList.remove('hidden');
+    },
+
+    // Helper thêm nút Vị trí của bạn
+    addMyLocationOption(container) {
+        const li = document.createElement('li');
+        li.className = 'suggestion-item px-4 py-2 hover:bg-blue-50 cursor-pointer text-sm flex items-center gap-2 text-blue-600 font-medium';
+        li.innerHTML = `
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+            <path stroke-linecap="round" stroke-linejoin="round" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+            </svg>
+            Vị trí của bạn
+        `;
+        li.onclick = () => this.useMyLocation();
+        container.appendChild(li);
+    },
+
+    // Xử lý khi chọn Vị trí của bạn
+    useMyLocation() {
+      MapManager.instance.locate({setView: true, maxZoom: 12});
+      this.hideSuggestions();
+    },
+
+    // Xử lý khi chọn một địa điểm từ kết quả tìm kiếm
+    selectLocation(item) {
+      // Nominatim trả về boundingbox dạng chuỗi: [minLat, maxLat, minLon, maxLon]
+      if (item.boundingbox) {
+        const bb = item.boundingbox;
+        // Leaflet fitBounds nhận [[lat1, lon1], [lat2, lon2]]
+        // Cần parse float vì API trả về string
+        const bounds = [
+            [parseFloat(bb[0]), parseFloat(bb[2])], // minLat, minLon
+            [parseFloat(bb[1]), parseFloat(bb[3])]  // maxLat, maxLon
+        ];
+        MapManager.instance.fitBounds(bounds);
+      } else {
+        // Fallback nếu không có bbox
+        MapManager.instance.setView([parseFloat(item.lat), parseFloat(item.lon)], 14);
+      }
+      
+      // Xóa highlight cũ và thêm marker mới vào vị trí tìm được
+      MapManager.layers.highlight.clearLayers();
+      L.marker([parseFloat(item.lat), parseFloat(item.lon)])
+        .addTo(MapManager.layers.highlight)
+        .bindPopup(item.display_name)
+        .openPopup();
+      
+      this.hideSuggestions();
+      document.getElementById('search-input').value = item.display_name;
     }
   };
 
