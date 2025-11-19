@@ -1,0 +1,1202 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <title>Dashboard Hồ & Trạm Sông</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/date-fns@2.29.3/index.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@2.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
+
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-JGB5XHREV0"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+
+  gtag('config', 'G-JGB5XHREV0');
+</script>
+
+  <style>
+      body { font-family: 'Inter', sans-serif; }
+      
+      /* Accordion Transition */
+      .accordion-content {
+        transition: max-height 0.3s ease-out;
+        max-height: 0;
+        overflow: hidden;
+      }
+      
+      /* Custom scrollbar */
+      .custom-scroll::-webkit-scrollbar { width: 6px; height: 6px; }
+      .custom-scroll::-webkit-scrollbar-track { background: #f1f5f9; }
+      .custom-scroll::-webkit-scrollbar-thumb { background-color: #cbd5f5; border-radius: 99px; }
+      
+      /* Map Icons */
+      .lake-icon div {
+        box-shadow: 0 0 0 1px rgba(15, 118, 110, 0.2), 0 1px 2px rgba(15, 23, 42, 0.12);
+        display: flex; align-items: center; justify-content: center;
+      }
+      .custom-popup .leaflet-popup-content-wrapper {
+        border-radius: 8px;
+      }
+      .custom-popup .leaflet-popup-content {
+        margin: 0;
+      }
+      .tab-btn { transition: all 0.2s; }
+      .tab-btn.active { background-color: #2563eb; color: white !important; }
+      .tab-btn.active svg { color: white !important; }
+      .layer-btn.active { background-color: #2563eb !important; color: white !important; }
+      .layer-btn.active svg { color: white !important; }
+    </style>
+    <style>
+      @media (max-width: 768px) {
+        #legend-container {
+          transform-origin: bottom left;
+          transform: scale(0.8); /* Was 0.7, made 10% bigger */
+        }
+        #layer-control-wrapper {
+          transform-origin: bottom right;
+          transform: scale(0.9); /* Was 0.7, made ~20% bigger */
+        }
+      }
+    </style>
+</head>
+<body class="bg-slate-50 h-screen flex flex-col overflow-hidden">
+
+  <header class="flex-none bg-white border-b border-slate-200 px-4 py-2 shadow-sm z-20 flex items-center gap-3">
+    <div class="relative flex-1">
+      <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+        <svg class="h-5 w-5 text-slate-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
+          <path fill-rule="evenodd" d="M8 4a4 4 0 100 8 4 4 0 000-8zM2 8a6 6 0 1110.89 3.476l4.817 4.817a1 1 0 01-1.414 1.414l-4.816-4.816A6 6 0 012 8z" clip-rule="evenodd" />
+        </svg>
+      </div>
+      <input type="text" id="search-input" placeholder="Tìm vị trí hoặc tỉnh thành" 
+             class="w-full pl-10 pr-4 py-2 border rounded-full text-base lg:text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 transition"
+             onfocus="Search.showSuggestions()" onblur="setTimeout(Search.hideSuggestions, 200)" onkeyup="Search.filter()">
+      <div id="search-suggestions" class="absolute mt-1 w-full bg-white rounded-lg shadow-lg overflow-hidden hidden max-h-60 overflow-y-auto custom-scroll">
+        <ul id="suggestions-list">
+          </ul>
+      </div>
+    </div>
+
+    <a href="https://vnexpress.net" class="flex-none shrink-0 ml-1" target="_blank" rel="noopener noreferrer" title="VnExpress">
+      <img src="https://upload.wikimedia.org/wikipedia/commons/2/28/VnExpress.net_Logo.svg" alt="VnExpress Logo" class="h-6 w-auto">
+    </a>
+  </header>
+
+  <div class="flex-none bg-white border-b border-slate-200 px-4 py-2 flex items-center justify-between gap-4 z-10">
+    <div id="basin-tabs" class="hidden lg:flex gap-1 min-w-max overflow-x-auto custom-scroll">
+      </div>
+    <div class="lg:hidden flex-1">
+        <select id="basin-select" class="w-full border rounded-md text-xs focus:outline-none focus:ring-2 focus:ring-blue-500 transition px-2 py-1.5 bg-white"></select>
+    </div>
+    <div id="live-status" class="flex-none flex items-center gap-2 text-xs text-slate-600 whitespace-nowrap">
+      <span class="relative flex h-2 w-2"><span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span><span class="relative inline-flex rounded-full h-2 w-2 bg-green-500"></span></span>
+      <span id="live-time">Đang tải...</span>
+    </div>
+  </div>
+
+  <main class="flex-1 flex flex-col lg:flex-row overflow-hidden">
+    
+    <div class="flex-1 relative z-0">
+      <div id="map" class="w-full h-full"></div>
+      <div id="legend-wrapper" class="absolute bottom-2 left-2 z-[400] flex flex-col items-start gap-1">
+        <div id="legend-container" class="bg-white/80 backdrop-blur-sm p-2 rounded-lg shadow-md text-slate-700 text-xs w-52 relative hidden">
+          <button onclick="UI.toggleLegend()" class="absolute top-1 right-1 w-5 h-5 bg-slate-100/50 hover:bg-slate-200/70 rounded-full flex items-center justify-center text-slate-500 transition">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
+          </button>
+          <h4 class="font-bold mb-1 text-center pr-4">Chú giải</h4>
+          <div id="legend-river-lake" class="grid grid-cols-2 gap-2">
+            <div class="pr-1">
+              <div class="font-semibold mb-1">Tỷ lệ dung tích hồ chứa</div>
+              <div class="flex flex-col gap-1 text-[11px]">
+                <div class="flex items-center gap-1.5"><svg width="12" height="12" viewBox="0 0 24 24" fill="#ef4444" stroke="white" stroke-width="2"><path d="M12 2L2 22h20L12 2z"></path></svg> >100%</div>
+                <div class="flex items-center gap-1.5"><svg width="12" height="12" viewBox="0 0 24 24" fill="#f97316" stroke="white" stroke-width="2"><path d="M12 2L2 22h20L12 2z"></path></svg> ≥95%</div>
+                <div class="flex items-center gap-1.5"><svg width="12" height="12" viewBox="0 0 24 24" fill="#eab308" stroke="white" stroke-width="2"><path d="M12 2L2 22h20L12 2z"></path></svg> ≥90%</div>
+                <div class="flex items-center gap-1.5"><svg width="12" height="12" viewBox="0 0 24 24" fill="#0ea5e9" stroke="white" stroke-width="2"><path d="M12 2L2 22h20L12 2z"></path></svg> &lt;90%</div>
+              </div>
+            </div>
+            <div class="border-l pl-2 border-slate-200">
+              <div class="font-semibold mb-1">Trạm mực nước sông</div>
+              <div class="flex flex-col gap-1 text-[11px]">
+                <div class="flex items-center gap-1.5"><div class="w-2.5 h-2.5 rounded-full" style="background-color:#ef4444;"></div> Trên BĐ3</div>
+                <div class="flex items-center gap-1.5"><div class="w-2.5 h-2.5 rounded-full" style="background-color:#f97316;"></div> Trên BĐ2</div>
+                <div class="flex items-center gap-1.5"><div class="w-2.5 h-2.5 rounded-full" style="background-color:#eab308;"></div> Trên BĐ1</div>
+                <div class="flex items-center gap-1.5"><div class="w-2.5 h-2.5 rounded-full" style="background-color:#0ea5e9;"></div> Dưới BĐ1</div>
+              </div>
+            </div>
+          </div>
+          <div id="legend-risk" class="hidden mt-2 pt-2 border-t border-slate-200">
+            <div class="font-semibold mb-1">Nguy cơ sạt lở, lũ quét</div>
+            <div class="flex flex-col gap-1 text-[11px]">
+              <div class="flex items-center gap-1.5"><div class="w-3 h-3" style="background-color:#8a2be2;"></div> Rất cao</div>
+              <div class="flex items-center gap-1.5"><div class="w-3 h-3" style="background-color:#cf3f3c;"></div> Cao</div>
+              <div class="flex items-center gap-1.5"><div class="w-3 h-3" style="background-color:#ffd21f;"></div> Trung bình</div>
+            </div>
+          </div>
+          <div class="mt-2 pt-1.5 border-t border-slate-200 text-[8px] text-slate-500 text-center">
+            <span>Dữ liệu: Viện Khoa học Thuỷ lợi & VNDMS</span><br>
+            <span>Bản đồ nền: Google Satellite & VNDMS</span>
+          </div>
+        </div>
+        <button id="legend-toggle-btn" onclick="UI.toggleLegend()" class="bg-white/80 backdrop-blur-sm rounded-lg shadow-md px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-white transition">
+          Chú giải
+        </button>
+      </div>
+      <div id="layer-control-wrapper" class="absolute bottom-2 right-2 z-[400] flex flex-col items-end gap-1">
+        <div id="layer-control" class="bg-white/80 backdrop-blur-sm p-2 rounded-lg shadow-md flex flex-col gap-2 relative">
+          <button onclick="UI.toggleLayerControl()" class="absolute top-1 right-1 w-5 h-5 bg-slate-100/50 hover:bg-slate-200/70 rounded-full flex items-center justify-center text-slate-500 transition">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
+          </button>
+          <button data-layer="risk" onclick="App.switchLayer('risk')" class="layer-btn flex flex-col items-center justify-center gap-1 p-1 text-xs font-semibold rounded-md text-center hover:bg-slate-100 text-slate-600 w-20 h-20">
+            <img src="icons/Flood.png" alt="Lũ quét icon" class="w-10 h-10 rounded">
+            <span class="text-[10px] leading-tight">Lũ quét, Sạt lở</span>
+          </button>
+          <button data-layer="river_lake" onclick="App.switchLayer('river_lake')" class="layer-btn flex flex-col items-center gap-1 p-1 text-xs font-semibold rounded-md text-center hover:bg-slate-100 text-slate-600">
+            <img src="icons/Lake.png" alt="Sông & Hồ icon" class="w-10 h-10 rounded">
+            <span class="text-[10px] leading-tight">Sông & Hồ</span>
+          </button>
+          <button data-layer="all" onclick="App.switchLayer('all')" class="layer-btn active flex flex-col items-center gap-1 p-1 text-xs font-semibold rounded-md text-center hover:bg-slate-100 text-slate-600">
+            <img src="icons/All.png" alt="Tất cả icon" class="w-10 h-10 rounded">
+            <span class="text-[10px] leading-tight">Tất cả</span>
+          </button>
+        </div>
+        <button id="layer-toggle-btn" onclick="UI.toggleLayerControl()" class="bg-white/80 backdrop-blur-sm rounded-lg shadow-md px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-white transition hidden">
+          Dữ liệu
+        </button>
+      </div>
+
+    </div>
+
+    <aside class="hidden lg:flex w-full lg:w-96 bg-white border-l border-slate-200 flex-col z-10 shadow-xl">
+      <div class="p-2.5 border-b bg-slate-50">
+        <h2 class="text-sm font-bold text-slate-800" id="sidebar-title">Chi tiết trạm</h2>
+        <p class="text-xs text-slate-500">Mở các mục bên dưới để xem thông tin & biểu đồ</p>
+      </div>
+
+      <div class="flex-1 overflow-y-auto custom-scroll p-2 space-y-2">
+        
+        <div class="border rounded-lg overflow-hidden bg-white">
+          <button onclick="UI.toggleSection('summary')" class="w-full p-1.5 flex items-center justify-between hover:bg-slate-50 transition">
+            <span class="font-semibold text-sm text-slate-700 flex items-center gap-2">
+              <span id="summary-chevron" class="transform -rotate-90 transition-transform duration-200">▼</span> Tổng quan
+            </span>
+          </button>
+          <div id="summary-content" class="accordion-content bg-slate-50">
+            <div id="summary-container" class="p-1.5 space-y-2 text-xs">
+              </div>
+          </div>
+        </div>
+
+        <div class="border rounded-lg overflow-hidden bg-white">
+          <button onclick="UI.toggleSection('lake')" class="w-full p-1.5 flex items-center justify-between hover:bg-slate-50 transition">
+            <span class="font-semibold text-sm text-emerald-700 flex items-center gap-2">
+              <span id="lake-chevron" class="transform -rotate-90 transition-transform duration-200">▼</span> Hồ chứa
+            </span>
+            <span id="lake-count" class="text-xs bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full">0</span>
+          </button>
+          <div id="lake-content" class="accordion-content bg-slate-50">
+            <div id="lake-container" class="p-1.5 space-y-3"></div>
+          </div>
+        </div>
+
+        <div class="border rounded-lg overflow-hidden bg-white">
+          <button onclick="UI.toggleSection('river')" class="w-full p-1.5 flex items-center justify-between hover:bg-slate-50 transition">
+            <span class="font-semibold text-sm text-blue-700 flex items-center gap-2">
+              <span id="river-chevron" class="transform -rotate-90 transition-transform duration-200">▼</span> Trạm sông
+            </span>
+            <span id="river-count" class="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full">0</span>
+          </button>
+          <div id="river-content" class="accordion-content bg-slate-50">
+            <div id="river-container" class="p-1.5 space-y-3"></div>
+          </div>
+        </div>
+
+      </div>
+    </aside>
+  </main>
+
+  <div id="detail-view" class="absolute inset-0 bg-white z-[1000] flex flex-col p-2 hidden transition-opacity duration-300 opacity-0">
+    <div class="flex-none flex justify-between items-center mb-1 p-2">
+      <div>
+        <h3 id="detail-title" class="font-bold text-lg text-slate-800"></h3>
+        <p id="detail-subtitle" class="text-sm text-slate-500"></p>
+      </div>
+      <button onclick="App.hideDetailView()" class="text-slate-400 hover:bg-slate-100 rounded-full p-2">
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>
+      </button>
+    </div>
+    <div id="detail-chart-container" class="flex-1 relative p-2"></div>
+  </div>
+
+  <script>
+  // DOMAIN CHECK LOGIC ADDED HERE
+  function checkDomain(){
+        var checked = true;
+        try {
+            var ref = document.referrer || null;
+            if (ref != null || ref != "") {
+                var a = document.createElement('a');
+                a.href = ref;
+                if (a.host.indexOf('vnexpress.net') == -1) {
+                    checked = false;
+                }
+            }
+        } catch (e) {
+            checked = true;
+        }
+        return checked;
+    }
+
+  if (!checkDomain()){
+      window.location.href = 'https://vnexpress.net';
+  }
+
+  /**
+   * CONFIGURATION
+   */
+  const CONFIG = {
+    URLS: {
+      RIVER_GEO: 'geo/river.json',
+      BOUNDARY: 'geo/ProvincialBoundary.json',
+      DATA_CSV: 'data/water_data_full_combined.csv',
+      LANDSLIDE_CSV: 'data/landslide.csv',
+      WARD_BOUNDARY: 'geo/WardBoundary.geojson'
+    },
+    COLORS: ['#3b82f6', '#22c55e', '#f97316', '#a855f7', '#ec4899', '#0ea5e9', '#f59e0b', '#10b981'],
+    LIMITS: { LAKES: 50, RIVERS: 50 }, // FIX: Increased limit so you see more stations
+    DOWNSAMPLE: 240 
+  };
+
+  const State = {
+    allRecords: [], latestRecords: [], basins: [], landslideRecords: {},
+    activeBasin: '__ALL__', activeLayer: 'all',
+    maxAlerts: {}, geoJSON: null,
+    provinces: [], sections: { summary: false, lake: false, river: false },
+    chartInstances: [], stationHistory: {}
+  };
+
+  // Helper function to format numbers with a comma decimal separator
+  const formatDecimal = (num, precision = 2) => {
+    if (num === null || num === undefined || isNaN(num)) return '-';
+    return parseFloat(num).toFixed(precision).replace('.', ',');
+  };
+
+  /**
+   * MODULE: DATA
+   */
+  const Data = {
+    async init() {
+      try {
+        const [geo, csv, boundary, landslideCsv, wardBoundary] = await Promise.all([
+          fetch(CONFIG.URLS.RIVER_GEO).then(r => r.json()),
+          fetch(CONFIG.URLS.DATA_CSV).then(r => r.text()),
+          fetch(CONFIG.URLS.BOUNDARY).then(r => r.json()).catch(() => null),
+          fetch(CONFIG.URLS.LANDSLIDE_CSV).then(r => r.text()).catch(() => ''),
+          fetch(CONFIG.URLS.WARD_BOUNDARY).then(r => r.json()).catch(() => null)
+        ]);
+        
+        State.geoJSON = geo;
+        State.provinces = boundary ? boundary.features : [];
+        if(boundary) MapManager.addBoundary(boundary);
+        this.processCSV(csv);
+        this.processLandslideCSV(landslideCsv);
+        if (wardBoundary) MapManager.renderLandslideRisk(wardBoundary);
+        this.analyzeBasins();
+        UI.initTabs();
+        // UI.updateStatus(); // This is now redundant
+        UI.updateLiveTime();
+        App.switchBasin('__ALL__');
+      } catch (e) { console.error(e); }
+    },
+
+    processCSV(text) {
+      const lines = text.trim().split(/\r?\n/);
+      if (lines.length < 2) return;
+      const headers = this.parseCSVLine(lines[0]).map(h => h.trim());
+      const data = [];
+      for(let i=1; i<lines.length; i++) {
+        if(!lines[i].trim()) continue;
+        const vals = this.parseCSVLine(lines[i]);
+        const obj = {};
+        headers.forEach((h, idx) => obj[h] = vals[idx]?.trim());
+        data.push(this.transformRecord(obj));
+      }
+      data.sort((a,b) => a.ts - b.ts);
+      State.allRecords = data;
+      
+      const latestMap = {};
+      data.forEach(r => { if(r.code) latestMap[r.code] = r; });
+      State.latestRecords = Object.values(latestMap);
+      
+      State.latestRecords.forEach(r => {
+        if(r.type === 'river') {
+          const currentMax = State.maxAlerts[r.basin] || 0;
+          if(r.alert > currentMax) State.maxAlerts[r.basin] = r.alert;
+        }
+      });
+    },
+
+    parseCSVLine(text) {
+      const res = []; let cur = '', inQ = false;
+      for(let i=0; i<text.length; i++) {
+        const c = text[i];
+        if(c === '"') inQ = !inQ;
+        else if(c === ',' && !inQ) { res.push(cur); cur = ''; }
+        else cur += c;
+      }
+      res.push(cur);
+      return res;
+    },
+
+    transformRecord(r) {
+      // Helper to parse "dd/MM/yyyy HH:mm" format as local time
+      const parseVnDate = (dateString) => {
+        if (!dateString) return 0;
+        const parts = dateString.match(/(\d{2})\/(\d{2})\/(\d{4})\s(\d{2}):(\d{2})/);
+        if (!parts) return Date.parse(dateString); // Fallback for other formats
+        // new Date(year, monthIndex, day, hours, minutes)
+        return new Date(parts[3], parts[2] - 1, parts[1], parts[4], parts[5]).getTime();
+      };
+
+      const num = (v) => v && v !== '' ? parseFloat(v.replace(',', '.')) : null;
+      return {
+        code: r['Mã trạm/LakeCode'], name: r['Trạm/Hồ'], basin: r['Tên sông/Lưu vực'], alertTrend: r['Cảnh báo/Xu thế'], province: r['Tên tỉnh'] || '',
+        type: (r['type'] || 'river').toLowerCase(), timeStr: r['Thời gian (UTC)'],
+        // The source time is GMT+7, but the column name says UTC. We treat it as local time to avoid double-offsetting.
+        ts: parseVnDate(r['Thời gian (UTC)']),
+        water: num(r['Mực nước (m)']), alert: num(r['Cảnh báo value (0-4)']) || 0,
+        storage: num(r['Dung tích (m3)']), percent: num(r['Tỷ lệ dung tích (%)']), designStorage: num(r['Dung tích TK (m3)']),
+        qIn: num(r['Q đến (m3/s)']), qOut: num(r['Q xả (m3/s)']),
+        bd1: num(r['BĐ1 (m)']), bd2: num(r['BĐ2 (m)']), bd3: num(r['BĐ3 (m)']),
+        lat: num(r['y']), lng: num(r['x']),
+        historicalLevel: num(r['Mực nước lịch sử (m)']),
+        historicalYear: r['Năm lũ lịch sử'],
+      };
+    },
+
+    analyzeBasins() {
+      const basinMap = {}; // { basinName: Set<provinceName> }
+      State.latestRecords.forEach(r => {
+        if (r.basin && r.province) {
+          if (!basinMap[r.basin]) {
+            basinMap[r.basin] = new Set();
+          }
+          basinMap[r.basin].add(r.province.replace('tỉnh ', '').replace('thành phố ', ''));
+        }
+      });
+
+      State.basins = Object.keys(basinMap).sort().map(basinName => ({
+        name: basinName,
+        provinces: Array.from(basinMap[basinName]).sort().join(', ')
+      }));
+    },
+
+    processLandslideCSV(text) {
+      const lines = text.trim().split(/\r?\n/);
+      if (lines.length < 2) return;
+      const headers = this.parseCSVLine(lines[0]).map(h => h.trim());
+      const records = {};
+      for(let i=1; i<lines.length; i++) {
+        if(!lines[i].trim()) continue;
+        const vals = this.parseCSVLine(lines[i]);
+        const obj = {};
+        headers.forEach((h, idx) => obj[h] = vals[idx]?.trim());
+        records[obj.commune_name_2cap] = obj;
+      }
+      State.landslideRecords = records;
+    },
+
+    getRecordsForBasin(basin, onlyLatest=false) {
+      const src = onlyLatest ? State.latestRecords : State.allRecords;
+      return basin === '__ALL__' ? src : src.filter(r => r.basin === basin);
+    },
+
+    downsample(dataArray, key) {
+      if (dataArray.length <= CONFIG.DOWNSAMPLE) return dataArray.map(d => d[key]);
+      const step = Math.ceil(dataArray.length / CONFIG.DOWNSAMPLE);
+      const filtered = dataArray.filter((_, i) => i % step === 0);
+      if (dataArray.length > 0 && filtered[filtered.length-1] !== dataArray[dataArray.length-1]) {
+          filtered.push(dataArray[dataArray.length-1]);
+      }
+      return filtered.map(d => d[key]);
+    }
+  };
+
+  /**
+   * MODULE: MAP MANAGER
+   */
+  const MapManager = {
+    instance: null, layers: { river: null, station: null, highlight: null, landslide: null, landslideGeoJSON: null },
+
+    init() { // Default center is set here, but will be adjusted on initial load.
+      this.instance = L.map('map', { 
+        center: [14, 108.5], zoom: 6, preferCanvas: true, zoomControl: false, attributionControl: false
+      });
+      // Create custom panes to control layer order
+      this.instance.createPane('riskPane');
+      this.instance.getPane('riskPane').style.zIndex = 420; // Above overlays (400), below markers (600)
+      this.instance.createPane('stationPane');
+      this.instance.getPane('stationPane').style.zIndex = 430; // Above risk areas
+
+      this.layers.landslide = L.layerGroup();
+      // Add a dedicated layer for highlighting features like provinces
+      this.layers.highlight = L.layerGroup().addTo(this.instance);
+      // Add event listeners for the geolocation feature
+      this.instance.on('locationfound', this.onLocationFound.bind(this));
+      this.instance.on('locationerror', this.onLocationError.bind(this));
+
+      L.control.zoom({ position: 'topright' }).addTo(this.instance);
+      
+      L.tileLayer('https://mt0.google.com/vt/lyrs=s&hl=vi&x={x}&y={y}&z={z}', {
+        zIndex: 1,
+        keepBuffer: 10,       // FIX: Keep more tiles in memory
+        updateWhenIdle: false // FIX: Load tiles while panning
+      }).addTo(this.instance);
+      
+      // Add an overlay for labels with 50% opacity
+      L.tileLayer('https://vndms.dmptc.gov.vn/VNDark/{z}/{x}/{y}.png', {
+        zIndex: 2, // Higher zIndex to appear on top
+        opacity: 0.5,
+        pane: 'shadowPane' // Use a different pane to ensure it's an overlay
+      }).addTo(this.instance);
+
+      this.layers.river = L.layerGroup();
+      this.layers.station = L.layerGroup();
+    },
+
+    renderLandslideRisk(wardBoundary) {
+      this.layers.landslide.clearLayers();
+      
+      // Filter GeoJSON to only include features with risk data to optimize
+      const featuresWithRisk = wardBoundary.features.filter(feature => 
+        State.landslideRecords[feature.properties['Phường xã mới']]
+      );
+
+      this.layers.landslideGeoJSON = L.geoJSON({ type: 'FeatureCollection', features: featuresWithRisk }, {
+        style: this.styleLandslideArea,
+        interactive: false,
+        pane: 'riskPane' // Render in the custom risk pane
+      });
+      this.layers.landslide.addLayer(this.layers.landslideGeoJSON);
+    },
+
+    styleLandslideArea(feature) {
+      const communeName = feature.properties['Phường xã mới'];
+      const riskData = State.landslideRecords[communeName];
+      let color = 'transparent';
+      if (riskData) {
+        const riskLevel = riskData.nguycosatlo; // Using landslide risk, can be changed to flash flood
+        if (riskLevel === 'Rất cao') color = '#8a2be2'; // red-500
+        else if (riskLevel === 'Cao') color = '#cf3f3c'; // orange-500
+        else if (riskLevel === 'Trung bình') color = '#ffd21f'; // yellow-500
+      }
+
+      const isRiskView = State.activeLayer === 'risk';
+
+      return {
+        fillColor: color,
+        fillOpacity: isRiskView ? 0.8 : 0.4,
+        weight: isRiskView ? 1 : 0,
+        color: '#ffffff',
+        opacity: isRiskView ? 0.6 : 0
+      };
+    },
+
+    addBoundary(data) {
+      L.geoJSON(data, { 
+        style: { color: '#ffffff', weight: 1, opacity: 0.6, fillOpacity: 0 }, 
+        interactive: false 
+      }).addTo(this.instance);
+    },
+    
+    updateLayerVisibility() {
+        const layerState = State.activeLayer;
+        const layers = this.layers;
+
+        // Helper to add/remove layer from map
+        const setLayer = (layer, visible) => {
+            if (visible && !this.instance.hasLayer(layer)) this.instance.addLayer(layer);
+            if (!visible && this.instance.hasLayer(layer)) this.instance.removeLayer(layer);
+        };
+
+        setLayer(layers.river, layerState === 'all' || layerState === 'river_lake');
+        setLayer(layers.station, layerState === 'all' || layerState === 'river_lake');
+        setLayer(layers.landslide, layerState === 'all' || layerState === 'risk');
+
+        // Re-apply styles to landslide layer to reflect opacity/border changes
+        if (this.layers.landslideGeoJSON) {
+            this.layers.landslideGeoJSON.setStyle(this.styleLandslideArea);
+        }
+    },
+
+    renderBasin(basinName) {
+      this.layers.river.clearLayers();
+      this.layers.station.clearLayers();
+      this.layers.highlight.clearLayers(); // Clear highlight when switching basin
+      const records = Data.getRecordsForBasin(basinName, true);
+      const activeBasins = new Set(records.map(r => r.basin));
+
+      if (State.geoJSON) {
+        const features = State.geoJSON.features.filter(f => {
+          const b = f.properties.Basin || f.properties.basin;
+          return basinName === '__ALL__' ? activeBasins.has(b) : b === basinName;
+        });
+        if (features.length) {
+          const riverLayer = L.geoJSON(features, { style: this.styleRiver });
+          this.layers.river.addLayer(riverLayer);
+
+          if (basinName === '__ALL__') {
+            // For the "All" view, set a specific default center and zoom.
+            this.instance.flyTo([14, 108.5], 7, { duration: 1.5 });
+          } else {
+            // For a specific basin, zoom to its bounds.
+            this.instance.flyToBounds(riverLayer.getBounds(), { padding: [20, 20], duration: 1.5 });
+          }
+        }
+      }
+
+      records.forEach(r => {
+        if (!r.lat || !r.lng) return;
+        this.layers.station.addLayer(this.createMarker(r));
+      });
+    },
+
+    styleRiver(feature) {
+      const props = feature.properties;
+      const level = props.Level || 0; // Default to level 0 if not specified
+
+      let weight;
+      let opacity;
+
+      // Scale width and opacity based on the river's Level
+      // Level 0 is the largest, Level 3 is the smallest.
+      switch (level) {
+        case 0: weight = 3.5; opacity = 1; break; // Main river
+        case 1: weight = 1.5; opacity = 0.8; break; // Major branch
+        case 2: weight = 1; opacity = 0.7; break; // Sub-branch
+        case 3: weight = 0.5; opacity = 0.6; break; // Smallest tributary
+        default: weight = 0.5; opacity = 0.6;
+      }
+
+      return { 
+        color: '#60a5fa', 
+        weight: weight, 
+        opacity: opacity 
+      };
+    },
+
+    createMarker(r) {
+      const isLake = r.type === 'lake';
+      const color = isLake ? null : this.getAlertColor(r.alert);
+      const lakeColor = isLake ? this.getLakeColor(r.percent) : null;
+      const basinColor = this.getBasinColor(r.basin);
+      let marker;
+      if (isLake) {
+        const html = `<svg width="24" height="24" viewBox="0 0 24 24" fill="${lakeColor}" stroke="white" stroke-width="2"><path d="M12 2L2 22h20L12 2z"/></svg>`;
+        marker = L.marker([r.lat, r.lng], { icon: L.divIcon({ className: 'lake-icon', html, iconSize: [24, 24] }) });
+      } else {
+        marker = L.circleMarker([r.lat, r.lng], { radius: r.alert > 0 ? 6 + (r.alert * 2) : 5, fillColor: color, color: '#fff', weight: 1, fillOpacity: 1, pane: 'stationPane' });
+      }
+      
+      const popupTitle = `<div class="text-white p-2 rounded-t-lg" style="background-color: ${isLake ? lakeColor : color};">
+        <div class="font-bold text-sm">${isLake ? 'Hồ' : 'Trạm'} ${r.name}</div>
+        <div class="font-normal text-white/80 text-[11px] leading-tight">Sông ${r.basin}, ${r.province}</div>
+      </div>`;
+      const riverInfo = `<div class="text-slate-500">Mực nước:</div><div class="font-mono font-bold">${formatDecimal(r.water, 2)} m</div><div class="text-slate-500">Cảnh báo:</div><div class="font-bold" style="color:${color}">${r.alertTrend || `Mức ${r.alert}`}</div>`;
+      const lakeInfo = `<div class="text-slate-500">Dung tích:</div><div class="font-mono font-bold">${r.storage ? formatDecimal(r.storage, 2) : '-'} triệu m³</div><div class="text-slate-500">Tỷ lệ đầy:</div><div class="font-mono font-bold" style="color:${lakeColor}">${formatDecimal(r.percent, 2)}%</div>`;
+      
+      const date = new Date(r.ts);
+      const hours = date.getHours();
+      const minutes = String(date.getMinutes()).padStart(2, '0');
+      const day = String(date.getDate()).padStart(2, '0');
+      const month = String(date.getMonth() + 1).padStart(2, '0');
+      const year = date.getFullYear();
+      const formattedTime = `Cập nhật: ${hours}h${minutes}, ngày ${day}/${month}/${year}`;
+      
+      const detailButton = `<div class="col-span-2 mt-2 pt-2 border-t border-slate-100">
+        <button onclick="App.showDetailView('${r.code}')" class="w-full text-center bg-blue-50 hover:bg-blue-100 text-blue-600 text-xs font-semibold py-1.5 rounded">Xem chi tiết</button>
+      </div>`;
+
+      const popupContent = `<div class="p-2 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-xs pt-1">${isLake ? lakeInfo : riverInfo}<div class="col-span-2 text-[10px] text-slate-400 mt-1 text-right">${formattedTime}</div>${detailButton}</div>`;
+      const popup = `<div class="font-sans text-sm min-w-[220px]">${popupTitle}${popupContent}</div>`;
+      marker.bindPopup(popup, { className: 'custom-popup' });
+
+      // FIX: Re-open popup after a short delay to ensure correct positioning after auto-pan.
+      // This avoids the "half-popup" issue on first click.
+      marker.on('click', (e) => {
+        const m = e.target;
+        m.openPopup(); // Open immediately to trigger Leaflet's auto-pan
+        setTimeout(() => { if (m.isPopupOpen()) { m.openPopup(); } }, 100); // Re-open to fix position
+        // UI.scrollToChart(r.type, r.code);
+      });
+      return marker;
+    },
+
+    getAlertColor(val) {
+      if (val >= 3) return '#ef4444'; if (val >= 2) return '#f97316'; if (val >= 1) return '#eab308'; return '#0ea5e9';
+    },
+
+    getLakeColor(percent) {
+      if (percent == null) return '#0ea5e9'; // Default blue
+      if (percent > 100) return '#ef4444';  // Red
+      if (percent >= 95) return '#f97316';  // Orange
+      if (percent >= 90) return '#eab308';  // Yellow
+      return '#0ea5e9';                     // Blue
+    },
+
+    getBasinColor(basin) {
+      const alertLevel = State.maxAlerts[basin] || 0;
+      const colors = ['#60a5fa', '#facc15', '#fb923c', '#f87171', '#dc2626'];
+      return alertLevel > 0 
+        ? colors[alertLevel] 
+        : (CONFIG.COLORS[basin.length % CONFIG.COLORS.length]);
+    },
+
+    onLocationFound(e) {
+      // Clear any previous highlights (like a selected province)
+      this.layers.highlight.clearLayers();
+
+      const radius = e.accuracy;
+      // Draw a circle representing the accuracy of the location
+      L.circle(e.latlng, radius, {
+        color: '#2563eb',
+        fillColor: '#60a5fa',
+        fillOpacity: 0.2,
+        weight: 1
+      }).addTo(this.layers.highlight);
+
+      // Draw a marker at the center of the location
+      L.circleMarker(e.latlng, {
+        radius: 8,
+        color: '#fff',
+        weight: 2,
+        fillColor: '#2563eb',
+        fillOpacity: 1
+      }).addTo(this.layers.highlight);
+    },
+    onLocationError(e) {
+      alert("Không thể tìm thấy vị trí của bạn. Vui lòng kiểm tra cài đặt trình duyệt.");
+    }
+  };
+
+  /**
+   * MODULE: UI
+   */
+  const UI = {
+    updateLiveTime() {
+      if (!State.latestRecords.length) return;
+      // Find the most recent record
+      const latest = State.latestRecords.reduce((a, b) => (a.ts > b.ts ? a : b));
+      const date = new Date(latest.ts);
+      
+      // Use local time methods instead of UTC
+      const hours = date.getHours();
+      const day = String(date.getDate()).padStart(2, '0');
+      const month = String(date.getMonth() + 1).padStart(2, '0');
+      const year = date.getFullYear();
+      const formattedTime = `Cập nhật: ${hours}h, ngày ${day}/${month}/${year}`;
+      document.getElementById('live-time').textContent = formattedTime;
+    },
+
+    initTabs() {
+      const tabsContainer = document.getElementById('basin-tabs');
+      const selectEl = document.getElementById('basin-select');
+
+      const createBtn = (txt, val) => {
+        const b = document.createElement('button');
+        b.className = 'tab-btn px-3 py-1 rounded-full bg-slate-100 text-slate-600 text-xs font-medium whitespace-nowrap hover:bg-slate-200';
+        b.textContent = txt;
+        b.onclick = () => App.switchBasin(val);
+        b.dataset.val = val;
+        tabsContainer.appendChild(b);
+      };
+
+      const createOption = (txt, val) => {
+        const o = document.createElement('option');
+        o.textContent = txt;
+        o.value = val;
+        selectEl.appendChild(o);
+      };
+
+      createBtn('Tất cả lưu vực', '__ALL__');
+      createOption('Tất cả lưu vực', '__ALL__');
+      State.basins.forEach(basin => { // Sông Vu Gia - Thu Bồn (Quảng Nam, Đà Nẵng, Kon Tum)
+        const displayText = `${basin.name} (${basin.provinces})`;
+        createBtn(displayText, basin.name);
+        createOption(displayText, basin.name);
+      });
+      selectEl.onchange = (e) => App.switchBasin(e.target.value);
+    },
+
+    toggleSection(type) {
+      State.sections[type] = !State.sections[type];
+      const content = document.getElementById(`${type}-content`);
+      const chevron = document.getElementById(`${type}-chevron`);
+      
+      // FIX: Use JS to calculate height to allow infinite scrolling
+      if (State.sections[type]) {
+        // Set to scrollHeight (exact size of content)
+        content.style.maxHeight = content.scrollHeight + "px";
+        chevron.classList.remove('-rotate-90');
+        Charts.renderBatch(type);
+      } else {
+        content.style.maxHeight = '0px';
+        chevron.classList.add('-rotate-90');
+      }
+    },
+    
+    // FIX: Added function to recalculate height if content loads late
+    refreshHeight(type) {
+      const content = document.getElementById(`${type}-content`);
+      if (State.sections[type]) {
+        content.style.maxHeight = content.scrollHeight + "px";
+      }
+    },
+
+    toggleLegend() {
+      const legend = document.getElementById('legend-container');
+      const toggleBtn = document.getElementById('legend-toggle-btn');
+      legend.classList.toggle('hidden');
+      toggleBtn.classList.toggle('hidden');
+    },
+
+    toggleLayerControl() {
+      const control = document.getElementById('layer-control');
+      const toggleBtn = document.getElementById('layer-toggle-btn');
+      control.classList.toggle('hidden');
+      toggleBtn.classList.toggle('hidden');
+    },
+    
+    updateLayerControl() {
+      document.querySelectorAll('.layer-btn').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.layer === State.activeLayer);
+      });
+
+      const isRiskView = State.activeLayer === 'risk';
+      const isRiverLakeView = State.activeLayer === 'river_lake';
+      const isAllView = State.activeLayer === 'all';
+
+      document.getElementById('legend-river-lake').style.display = isRiskView ? 'none' : 'grid';
+      document.getElementById('legend-risk').style.display = isRiverLakeView ? 'none' : 'block';
+      this.refreshHeight('summary'); // In case legend size changes
+    },
+
+    resetSections() {
+      ['summary', 'lake', 'river'].forEach(type => {
+        if (State.sections[type]) {
+          State.sections[type] = false;
+          document.getElementById(`${type}-content`).style.maxHeight = '0px';
+          document.getElementById(`${type}-chevron`).classList.add('-rotate-90');
+        }
+      });
+    },
+
+    renderSummary() {
+      const container = document.getElementById('summary-container');
+      container.innerHTML = '';
+      const records = Data.getRecordsForBasin(State.activeBasin, true);
+
+      const basins = {};
+      records.forEach(r => {
+        if (!basins[r.basin]) {
+          basins[r.basin] = {
+            lakes: { red: 0, orange: 0, yellow: 0, blue: 0 },
+            rivers: { red: 0, orange: 0, yellow: 0, blue: 0 }
+          };
+        }
+        if (r.type === 'lake') {
+          const p = r.percent;
+          if (p > 100) basins[r.basin].lakes.red++;
+          else if (p >= 95) basins[r.basin].lakes.orange++;
+          else if (p >= 90) basins[r.basin].lakes.yellow++;
+          else basins[r.basin].lakes.blue++;
+        } else {
+          const a = r.alert;
+          if (a >= 3) basins[r.basin].rivers.red++;
+          else if (a >= 2) basins[r.basin].rivers.orange++;
+          else if (a >= 1) basins[r.basin].rivers.yellow++;
+          else basins[r.basin].rivers.blue++;
+        }
+      });
+
+      const sortedBasins = Object.keys(basins).sort();
+      if (sortedBasins.length === 0) {
+        container.innerHTML = '<div class="text-center text-xs text-slate-400 py-4">Không có dữ liệu</div>';
+        return;
+      }
+
+      sortedBasins.forEach(basinName => {
+        const data = basins[basinName];
+        const summaryItem = (type, color, label, count) => {
+          if (count === 0) return '';
+          const icon = type === 'lake' 
+            ? `<svg width="12" height="12" viewBox="0 0 24 24" fill="${color}" stroke="white" stroke-width="2"><path d="M12 2L2 22h20L12 2z"/></svg>`
+            : `<div class="w-3 h-3 rounded-full" style="background-color:${color};"></div>`;
+          return `<div class="flex items-center gap-1.5"><div class="w-3 h-3 flex items-center justify-center">${icon}</div> ${label}: <span class="font-bold">${count}</span></div>`;
+        };
+
+        const basinHTML = `
+          <div class="pb-1.5 border-b last:border-b-0">
+            <h4 class="font-bold text-slate-700 mb-1">Sông ${basinName}</h4>
+            <div class="grid grid-cols-2 gap-2">
+              <div>
+                <div class="font-semibold text-emerald-700 mb-1">Tỷ lệ dung tích hồ chứa</div>
+                ${summaryItem('lake', '#ef4444', '> 100%', data.lakes.red)} ${summaryItem('lake', '#f97316', '≥ 95%', data.lakes.orange)} ${summaryItem('lake', '#eab308', '≥ 90%', data.lakes.yellow)} ${summaryItem('lake', '#0ea5e9', '< 90%', data.lakes.blue)}
+              </div>
+              <div>
+                <div class="font-semibold text-blue-700 mb-1">Trạm sông</div>
+                ${summaryItem('river', '#ef4444', 'BĐ3+', data.rivers.red)} ${summaryItem('river', '#f97316', 'BĐ2', data.rivers.orange)} ${summaryItem('river', '#eab308', 'BĐ1', data.rivers.yellow)} ${summaryItem('river', '#0ea5e9', 'Dưới BĐ1', data.rivers.blue)}
+              </div>
+            </div>
+          </div>`;
+        container.insertAdjacentHTML('beforeend', basinHTML);
+      });
+    },
+
+    prepareChartContainers(type, records) {
+      const container = document.getElementById(`${type}-container`);
+      const countEl = document.getElementById(`${type}-count`);
+      
+      const groups = {};
+      records.forEach(r => { if(!groups[r.code]) groups[r.code] = []; groups[r.code].push(r); });
+      Object.assign(State.stationHistory, groups);
+
+      const sortedKeys = Object.keys(groups).sort((a, b) => {
+        const lastA = groups[a][groups[a].length-1];
+        const lastB = groups[b][groups[b].length-1];
+        if(type === 'lake') return (lastB.percent || 0) - (lastA.percent || 0);
+        return (lastB.alert || 0) - (lastA.alert || 0);
+      });
+
+      countEl.textContent = sortedKeys.length;
+      container.innerHTML = '';
+
+      const limit = type === 'lake' ? CONFIG.LIMITS.LAKES : CONFIG.LIMITS.RIVERS;
+      sortedKeys.slice(0, limit).forEach(code => {
+        const history = groups[code];
+        const latest = history[history.length - 1];
+        const isLake = type === 'lake';
+        const alertLvl = latest.alert || 0; 
+        const percent = latest.percent || 0;
+        const color = isLake ? MapManager.getLakeColor(percent) : MapManager.getAlertColor(alertLvl);
+        const valueText = isLake ? `${formatDecimal(percent, 2)}%` : (latest.alertTrend || `Mức ${alertLvl}`);
+        const html = `
+          <div class="border rounded bg-white p-2 shadow-sm" id="card-${code}">
+            <div class="flex justify-between items-start mb-1"><div>
+                <div class="font-bold text-xs text-slate-800">${latest.name}</div>
+                <div class="text-[10px] text-slate-500">Sông ${latest.basin} • ${latest.province || ''}</div>
+              </div>
+              <div class="text-xs font-mono font-bold" style="color: ${color};">${isLake ? 'Đầy ' : ''}${valueText}</div>
+            </div>
+            <div class="h-32 w-full relative"><canvas id="chart-${code}" data-code="${code}"></canvas></div>
+            ${type === 'lake' ? `
+            <div class="h-32 w-full relative mt-2"><canvas id="chart-flow-${code}" data-code="${code}"></canvas></div>
+            ` : ''}
+          </div>`;
+        container.insertAdjacentHTML('beforeend', html);
+      });
+
+      if(sortedKeys.length === 0) container.innerHTML = '<div class="text-center text-xs text-slate-400 py-4">Không có dữ liệu</div>';
+      
+      // FIX: Refresh height after inserting content so it doesn't cut off
+      this.refreshHeight(type);
+    },
+
+    scrollToChart(type, code) {
+      if (!State.sections[type]) this.toggleSection(type);
+      setTimeout(() => {
+        // Re-calc height in case the open animation hadn't accounted for this section yet
+        this.refreshHeight(type);
+        const card = document.getElementById(`card-${code}`);
+        if (card) {
+          card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          card.classList.add('ring-2', 'ring-blue-400');
+          setTimeout(() => card.classList.remove('ring-2', 'ring-blue-400'), 2000);
+        }
+      }, 300);
+    }
+  };
+
+  /**
+   * MODULE: CHARTING
+   */
+  const Charts = {
+    renderBatch(type) {
+      const container = document.getElementById(`${type}-container`);
+      const canvases = container.querySelectorAll('canvas');
+      canvases.forEach(canvas => {
+        if (canvas.dataset.rendered) return;
+        const code = canvas.dataset.code;
+        const history = State.stationHistory[code];
+        if (!history) return;
+        if (type === 'lake') {
+          this.drawLakeStorageChart(canvas, history);
+          const flowCanvas = document.getElementById(`chart-flow-${code}`);
+          if (flowCanvas) {
+            this.drawLakeFlowChart(flowCanvas, history);
+            flowCanvas.dataset.rendered = "true";
+          }
+        } else {
+          this.drawRiverChart(canvas, history);
+        }
+        canvas.dataset.rendered = "true";
+      });
+    },
+    destroyAll() { State.chartInstances.forEach(c => c.destroy()); State.chartInstances = []; },
+    commonOptions: {
+      responsive: true, maintainAspectRatio: false, interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: {
+          display: false, // Hide legend as it's redundant for single datasets
+          labels: {
+            font: { size: 10 },
+            boxWidth: 8,
+            boxHeight: 8
+          } 
+        }, 
+        tooltip: { animation: false } 
+      },
+      elements: { point: { radius: 0, hoverRadius: 4 } }, 
+      scales: { 
+        x: { 
+          display: true,
+          type: 'time',
+          time: {
+            unit: 'day',
+            tooltipFormat: "H'h'mm, dd/MM/yyyy",
+            displayFormats: { day: 'dd/MM' }
+          },
+          ticks: { font: { size: 9 }, maxTicksLimit: 3, autoSkip: true }
+        }, 
+        y: { 
+          ticks: { font: { size: 9 }, maxTicksLimit: 4 } 
+        } 
+      }
+    },
+    drawLakeStorageChart(canvas, data) {
+      const latest = data.length ? data[data.length - 1] : {};
+      const chart = new Chart(canvas, {
+        type: 'line',
+        data: { 
+          labels: Data.downsample(data, 'ts'), 
+          datasets: [
+            { 
+              label: 'Dung tích thực đo (triệu m³)', 
+              data: Data.downsample(data, 'storage'), 
+              borderColor: '#3b82f6', borderWidth: 2, fill: true, backgroundColor: '#3b82f620', tension: 0.1, spanGaps: true
+            },
+            { 
+              label: 'Dung tích thiết kế (triệu m³)', 
+              data: Array(Data.downsample(data, 'ts').length).fill(latest.designStorage), 
+              borderColor: '#f97316', borderWidth: 1.5, borderDash: [3,3], fill: false, spanGaps: true 
+            }
+        ]}, 
+        options: { ...this.commonOptions, plugins: { ...this.commonOptions.plugins, legend: { ...this.commonOptions.plugins.legend, display: true } } } });
+      State.chartInstances.push(chart);
+    },
+    drawRiverChart(canvas, data) {
+      const latest = data.length ? data[data.length - 1] : {};
+      const labels = Data.downsample(data, 'ts');
+      const datasets = [
+        { label: 'Mực nước (m)', data: Data.downsample(data, 'water'), borderColor: '#0ea5e9', borderWidth: 2, fill: true, backgroundColor: '#0ea5e920', tension: 0.1, spanGaps: true }
+      ];
+
+      const alertLevels = [
+        { level: 'bd1', label: 'BĐ1', color: '#facc15' },
+        { level: 'bd2', label: 'BĐ2', color: '#f97316' },
+        { level: 'bd3', label: 'BĐ3', color: '#ef4444' }
+      ];
+
+      alertLevels.forEach(alert => {
+        if (latest[alert.level]) {
+          datasets.push({
+            label: alert.label,
+            data: Array(labels.length).fill(latest[alert.level]),
+            borderColor: alert.color,
+            borderWidth: 1,
+            borderDash: [4, 4],
+            pointRadius: 0,
+            fill: false,
+          });
+        }
+      });
+      
+      if (latest.historicalLevel) {
+        datasets.push({
+          label: `Lũ lịch sử (${latest.historicalYear || ''})`,
+          data: Array(labels.length).fill(latest.historicalLevel),
+          borderColor: '#7e22ce', // Purple-700
+          borderWidth: 1,
+          borderDash: [2, 2],
+          pointRadius: 0,
+          fill: false,
+        });
+      }
+
+      const chart = new Chart(canvas, { type: 'line', data: { labels, datasets }, options: { ...this.commonOptions, plugins: { ...this.commonOptions.plugins, legend: { ...this.commonOptions.plugins.legend, display: true } } } });
+      State.chartInstances.push(chart);
+    },
+    drawLakeFlowChart(canvas, data) {
+      const chart = new Chart(canvas, { type: 'line', data: { labels: Data.downsample(data, 'ts'), datasets: [ // FIX: Use ts for time scale
+        { label: 'Lưu lượng đến (m³/s)', data: Data.downsample(data, 'qIn'), borderColor: '#22c55e', borderWidth: 1.5, fill: false, spanGaps: true },
+        { label: 'Lưu lượng xả (m³/s)', data: Data.downsample(data, 'qOut'), borderColor: '#ef4444', borderWidth: 1.5, fill: false, spanGaps: true }
+      ]}, options: { ...this.commonOptions, plugins: { ...this.commonOptions.plugins, legend: { ...this.commonOptions.plugins.legend, display: true } } } });
+      State.chartInstances.push(chart);
+    },
+    drawDetailChart(code) {
+      const history = State.stationHistory[code];
+      if (!history || !history.length) return;
+      const type = history[0].type;
+      const container = document.getElementById('detail-chart-container');
+      container.innerHTML = '<canvas id="detail-chart-canvas"></canvas>';
+      
+      if (type === 'lake') {
+        // For lakes, show two charts: storage and flow
+        container.innerHTML = `
+          <div class="h-1/2 relative"><canvas id="detail-chart-canvas-storage"></canvas></div>
+          <div class="h-1/2 relative pt-4"><canvas id="detail-chart-canvas-flow"></canvas></div>
+        `;
+        this.drawLakeStorageChart(document.getElementById('detail-chart-canvas-storage'), history);
+        this.drawLakeFlowChart(document.getElementById('detail-chart-canvas-flow'), history);
+      } else {
+        // For rivers, show the single water level chart
+        this.drawRiverChart(document.getElementById('detail-chart-canvas'), history);
+      }
+    },
+  };
+
+  const App = {
+    init() { MapManager.init(); Data.init(); },
+    switchBasin(basinName) {
+      UI.resetSections();
+      State.activeBasin = basinName;
+      document.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b.dataset.val === basinName));
+      document.getElementById('basin-select').value = basinName;
+      document.getElementById('sidebar-title').textContent = basinName === '__ALL__' ? 'Tất cả lưu vực' : `Lưu vực sông ${basinName}`;
+      MapManager.renderBasin(basinName);
+      
+      // Ensure correct layers are visible after basin switch
+      MapManager.updateLayerVisibility();
+      UI.updateLayerControl();
+
+      Charts.destroyAll(); State.stationHistory = {};
+      UI.renderSummary();
+      const records = Data.getRecordsForBasin(basinName);
+      UI.prepareChartContainers('lake', records.filter(r => r.type === 'lake'));
+      UI.prepareChartContainers('river', records.filter(r => r.type === 'river'));
+    },
+    showDetailView(code) {
+      const history = State.stationHistory[code];
+      if (!history || !history.length) return;
+      const latest = history[history.length - 1];
+      
+      document.getElementById('detail-title').textContent = latest.name;
+      document.getElementById('detail-subtitle').textContent = `Sông ${latest.basin} • ${latest.province}`;
+      
+      const detailView = document.getElementById('detail-view');
+      detailView.classList.remove('hidden');
+      setTimeout(() => detailView.classList.remove('opacity-0'), 10); // Fade in
+      
+      Charts.drawDetailChart(code);
+    },
+    hideDetailView() {
+      const detailView = document.getElementById('detail-view');
+      detailView.classList.add('opacity-0');
+      setTimeout(() => detailView.classList.add('hidden'), 300); // Hide after fade out
+    },
+    switchLayer(layerName) {
+      State.activeLayer = layerName;
+      MapManager.updateLayerVisibility();
+      UI.updateLayerControl();
+    },
+  };
+
+
+  /**
+   * MODULE: SEARCH
+   */
+  const Search = {
+    getSortedProvinces() {
+      const prioritized = [
+        'TP Huế',
+        'TP Đà Nẵng',
+        'tỉnh Quảng Ngãi', 
+        'tỉnh Gia Lai', 
+        'tỉnh Đắk Lắk',
+      ];
+      const allProvinces = [...new Set(State.provinces.map(f => f.properties['Tỉnh thành mới']))];
+      const remaining = allProvinces
+        .filter(p => !prioritized.includes(p))
+        .sort((a, b) => a.localeCompare(b, 'vi'));
+      return [...prioritized, ...remaining];
+    },
+    showSuggestions() {
+      const suggestionsEl = document.getElementById('search-suggestions');
+      const listEl = document.getElementById('suggestions-list');
+      suggestionsEl.classList.remove('hidden');
+      this.filter(); // Just call filter to populate
+    },
+    hideSuggestions() {
+      document.getElementById('search-suggestions').classList.add('hidden');
+    },
+    filter() {
+      const input = document.getElementById('search-input');
+      const filter = input.value.toUpperCase();
+      const listEl = document.getElementById('suggestions-list');
+      listEl.innerHTML = ''; // Clear current suggestions
+
+      const createSuggestionItem = (text, value, isProvince) => {
+        // Use innerHTML to allow for icons
+        const li = document.createElement('li');
+        li.className = 'suggestion-item px-4 py-2 hover:bg-blue-50 cursor-pointer text-sm';
+        li.innerHTML = text;
+        li.dataset.value = value;
+        li.onclick = () => isProvince ? this.selectProvince(value) : this.useMyLocation();
+        listEl.appendChild(li);
+      };
+
+      // Add "Your Location" with a locator icon
+      const myLocationHTML = `
+        <div class="flex items-center gap-2"><svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-blue-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" /><path stroke-linecap="round" stroke-linejoin="round" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" /></svg>Vị trí của bạn</div>
+      `;
+      createSuggestionItem(myLocationHTML, 'my-location', false);
+
+      const provinceNames = this.getSortedProvinces();
+      provinceNames.forEach(name => {
+        if (name.toUpperCase().indexOf(filter) > -1) {
+          createSuggestionItem(name.replace('tỉnh ', '').replace('thành phố ', ''), name, true);
+        }
+      });
+    },
+    useMyLocation() {
+      MapManager.instance.locate({setView: true, maxZoom: 10});
+    },
+    selectProvince(name) {
+      // Clear any existing highlight first for efficiency
+      MapManager.layers.highlight.clearLayers();
+
+      const province = State.provinces.find(f => f.properties['Tỉnh thành mới'] === name);
+      if (province) {
+        const highlightStyle = {
+          color: '#facc15', // yellow-400
+          weight: 3,
+          opacity: 1,
+          fillColor: 'transparent',
+          fillOpacity: 0
+        };
+        const layer = L.geoJSON(province, { style: highlightStyle }).addTo(MapManager.layers.highlight);
+        MapManager.instance.flyToBounds(layer.getBounds(), { padding: [50, 50], duration: 1 });
+      }
+    }
+  };
+
+  document.addEventListener('DOMContentLoaded', () => App.init());
+  </script>
+</body>
+</html>
