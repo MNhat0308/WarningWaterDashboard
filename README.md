@@ -173,12 +173,77 @@ groupby commune_id_2cap, giữ max severity → to_csv overwrite
 
 ---
 
-## CI (GitHub Actions)
+## Cronjob: cập nhật dữ liệu mỗi ngày
 
-- Workflow `.github/workflows/main.yml`:
-  - **Schedule:** cron mỗi giờ (phút 0 UTC).
-  - **Steps:** checkout → Python 3.11, `pip install -r requirements.txt` → `water_export_cli` → `landslide_export_cli` → tạo email summary (diff) → create PR (branch `data-update-patch`) → gửi email (cần `MAIL_USERNAME`, `MAIL_PASSWORD`).
-- Có thể chạy tay qua **workflow_dispatch**.
+### Cách 1: GitHub Actions (khuyến nghị)
+
+Workflow `.github/workflows/main.yml` đã cấu hình **chạy mỗi ngày**:
+
+| Mục | Giá trị |
+|-----|---------|
+| **Cron** | `0 6 * * *` → **06:00 UTC** mỗi ngày (= **13:00 GMT+7**) |
+| **Chạy tay** | Vào repo → **Actions** → **Water Data Export** → **Run workflow** |
+
+**Các bước mỗi lần chạy:** checkout → Python 3.11, `pip install -r requirements.txt` → `water_export_cli` → `landslide_export_cli` → tạo email summary (diff) → tạo PR (branch `data-update-patch`) → gửi email.
+
+**Cần cấu hình:** Secrets `MAIL_USERNAME`, `MAIL_PASSWORD` (Gmail App Password nếu dùng Gmail) để gửi email.
+
+**Đổi giờ chạy:** Sửa `cron` trong `.github/workflows/main.yml`:
+
+```yaml
+schedule:
+  - cron: "0 6 * * *"   # phút giờ ngày tháng thứ | 06:00 UTC = 13:00 GMT+7
+```
+
+Ví dụ:
+
+- `0 0 * * *` → 00:00 UTC = **07:00** GMT+7
+- `0 12 * * *` → 12:00 UTC = **19:00** GMT+7
+
+---
+
+### Cách 2: Cron trên máy local / server (Linux, macOS)
+
+Chạy script mỗi ngày trên máy của bạn (hoặc VPS):
+
+**1. Dùng script có sẵn:**
+
+```bash
+chmod +x run_daily_update.sh
+./run_daily_update.sh   # chạy thử
+```
+
+**2. Mở crontab:**
+
+```bash
+crontab -e
+```
+
+**3. Thêm dòng chạy mỗi ngày lúc 13:00 (GMT+7):**
+
+```cron
+0 13 * * * /đường/dẫn/đến/WarningWaterDashboard/run_daily_update.sh >> /tmp/water-dashboard.log 2>&1
+```
+
+(Đổi `/đường/dẫn/đến/WarningWaterDashboard` thành đường dẫn thật tới project.)
+
+**Lưu ý:**
+
+- Đổi `/đường/dẫn/đến/WarningWaterDashboard` cho đúng.
+- Log ghi vào `/tmp/water-dashboard.log` (có thể đổi đường dẫn).
+- Crontab dùng **giờ hệ thống** (máy đặt GMT+7 thì `13` = 13:00 giờ VN).
+
+---
+
+### So sánh nhanh
+
+| | GitHub Actions | Cron local |
+|---|----------------|------------|
+| **Chạy ở đâu** | Trên GitHub (runner) | Máy bạn / VPS |
+| **Cần repo + push** | Có (workflow trong repo) | Không |
+| **Tự tạo PR + email** | Có | Không (chỉ cập nhật file local) |
+| **Dữ liệu lưu đâu** | Trong repo (sau khi merge PR) | Trong thư mục project |
+| **Dùng khi** | Dashboard đọc data từ repo / GitHub Pages | Chạy server riêng, data tại chỗ |
 
 ---
 
